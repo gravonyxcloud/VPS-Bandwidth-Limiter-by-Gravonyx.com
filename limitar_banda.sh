@@ -1,19 +1,21 @@
 cat << 'EOF' > limitar_banda.sh
 #!/bin/bash
 
-# Cores
+# Cores para o terminal
 VERDE='\033[0;32m'
 CIANO='\033[0;36m'
 AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m' # Sem cor
 
+# Limpa a tela antes de começar
+clear
+
 # =============================================================
 #  SCRIPT DE LIMITAÇÃO DE BANDA (INGRESS/EGRESS)
 #  CRÉDITOS: Gravonyx.com
 # =============================================================
 
-clear
 echo -e "${CIANO}###############################################################"
 echo -e "#                                                             #"
 echo -e "#    ____                                            .com     #"
@@ -38,16 +40,18 @@ echo -e "${AMARELO}[2/6] Configurações de Rede:${NC}"
 echo -e "Interface detectada: ${VERDE}$INTERFACE${NC}"
 echo "-----------------------------------------------"
 
-# 3. Perguntar o que limitar
+# 3. Menu de Opções
 echo -e "${CIANO}O que você deseja limitar?${NC}"
 echo -e "1) ${AMARELO}Apenas Saída${NC} (Egress/Upload)"
 echo -e "2) ${AMARELO}Apenas Entrada${NC} (Ingress/Download)"
 echo -e "3) ${AMARELO}Ambos${NC} (Entrada e Saída)"
 echo -e "0) ${VERMELHO}REMOVER TODOS OS LIMITES${NC}"
+echo "-----------------------------------------------"
 read -p "Opção: " TIPO_LIMITE
 
+# Lógica para remover limites
 if [ "$TIPO_LIMITE" == "0" ]; then
-    echo -e "${VERMELHO}Limpando todas as regras...${NC}"
+    echo -e "${VERMELHO}Limpando todas as regras e persistência...${NC}"
     tc qdisc del dev $INTERFACE root 2>/dev/null
     tc qdisc del dev $INTERFACE ingress 2>/dev/null
     ip link delete ifb0 2>/dev/null
@@ -56,6 +60,7 @@ if [ "$TIPO_LIMITE" == "0" ]; then
     exit 0
 fi
 
+# Coleta de valores
 read -p "Digite o valor numérico do limite: " VALOR
 echo -e "Escolha a unidade: 1) ${VERDE}Mbps${NC}  2) ${VERDE}Kbps${NC}  3) ${VERDE}Gbps${NC}"
 read -p "Opção: " UNIDADE_OPC
@@ -69,29 +74,30 @@ esac
 
 LIMITE="${VALOR}${SUFIXO}"
 
-# 4. Criar o script de aplicação
-echo -e "${AMARELO}[4/6] Criando script de persistência...${NC}"
+# 4. Criar o script de persistência
+echo -e "${AMARELO}[4/6] Gerando arquivo de persistência...${NC}"
 cat << SCHEDULER > /usr/local/bin/limit-bandwidth.sh
 #!/bin/bash
 # Creditos: Gravonyx.com
-INTERFACE_REDE=\$(ip route | grep default | awk '{print \$5}' | head -n1)
-tc qdisc del dev \$INTERFACE_REDE root 2>/dev/null
-tc qdisc del dev \$INTERFACE_REDE ingress 2>/dev/null
+# Redescobre interface no boot
+IFACE=\$(ip route | grep default | awk '{print \$5}' | head -n1)
+tc qdisc del dev \$IFACE root 2>/dev/null
+tc qdisc del dev \$IFACE ingress 2>/dev/null
 modprobe ifb 2>/dev/null
 ip link set dev ifb0 down 2>/dev/null
 ip link delete ifb0 2>/dev/null
 
 if [ "$TIPO_LIMITE" == "1" ] || [ "$TIPO_LIMITE" == "3" ]; then
-    tc qdisc add dev \$INTERFACE_REDE root handle 1: htb default 10
-    tc class add dev \$INTERFACE_REDE parent 1: classid 1:10 htb rate $LIMITE ceil $LIMITE
+    tc qdisc add dev \$IFACE root handle 1: htb default 10
+    tc class add dev \$IFACE parent 1: classid 1:10 htb rate $LIMITE ceil $LIMITE
 fi
 
 if [ "$TIPO_LIMITE" == "2" ] || [ "$TIPO_LIMITE" == "3" ]; then
     modprobe ifb
     ip link add ifb0 type ifb
     ip link set dev ifb0 up
-    tc qdisc add dev \$INTERFACE_REDE handle ffff: ingress
-    tc filter add dev \$INTERFACE_REDE parent ffff: protocol ip u32 match u32 0 0 action mirred egress redirect dev ifb0
+    tc qdisc add dev \$IFACE handle ffff: ingress
+    tc filter add dev \$IFACE parent ffff: protocol ip u32 match u32 0 0 action mirred egress redirect dev ifb0
     tc qdisc add dev ifb0 root handle 1: htb default 10
     tc class add dev ifb0 parent 1: classid 1:10 htb rate $LIMITE ceil $LIMITE
 fi
@@ -99,12 +105,12 @@ SCHEDULER
 
 chmod +x /usr/local/bin/limit-bandwidth.sh
 
-# 5. Configurar persistência
-echo -e "${AMARELO}[5/6] Configurando Crontab...${NC}"
+# 5. Configurar Crontab
+echo -e "${AMARELO}[5/6] Instalando no Crontab para boot automático...${NC}"
 (crontab -l 2>/dev/null | grep -v "/usr/local/bin/limit-bandwidth.sh" ; echo "@reboot /usr/local/bin/limit-bandwidth.sh") | crontab -
 
-# 6. Aplicar agora
-echo -e "${AMARELO}[6/6] Aplicando regras agora...${NC}"
+# 6. Aplicação imediata
+echo -e "${AMARELO}[6/6] Ativando regras agora...${NC}"
 bash /usr/local/bin/limit-bandwidth.sh
 
 echo ""
