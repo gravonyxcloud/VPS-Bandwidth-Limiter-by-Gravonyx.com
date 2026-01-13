@@ -8,6 +8,9 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
+# Versão do Script
+VERSAO="v3.1 Pro"
+
 # 1. TRABALHO SILENCIOSO INICIAL
 apt update &>/dev/null && apt install iproute2 -y &>/dev/null
 INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
@@ -16,26 +19,23 @@ CONFIG_FILE="/usr/local/bin/limit-bandwidth.sh"
 # 2. LIMPA A TELA
 clear
 
-# 3. BANNER NO TOPO
+# 3. BANNER NO TOPO (Visual Corrigido)
 echo -e "${CIANO}###############################################################"
 echo -e "#                                                             #"
-echo -e "#    ____                                            .com     #"
+echo -e "#    ____                                                     #"
 echo -e "#   / ___|_ __ __ ___   _____  _ __  _   ___  __              #"
 echo -e "#  | |  _| '__/ _\` \ \ / / _ \| '_ \| | | \ \/ /              #"
 echo -e "#  | |_| | | | (_| |\ V / (_) | | | | |_| |>  <               #"
 echo -e "#   \____|_|  \__,_| \_/ \___/|_| |_|\__, /_/\_\              #"
 echo -e "#                                    |___/                    #"
 echo -e "#                                                             #"
-echo -e "#                 ${VERDE}FEITO POR: GRAVONYX.COM${CIANO}                     #"
+echo -e "#        ${VERDE}FEITO POR: GRAVONYX.COM${NC}    |    ${AMARELO}VERSÃO: $VERSAO${CIANO}      #"
 echo -e "###############################################################${NC}"
 echo -e "${AMARELO}Interface ativa: ${VERDE}$INTERFACE${NC}"
 
-# 4. VERIFICAÇÃO DETALHADA DE REGRAS EXISTENTES
+# 4. VERIFICAÇÃO DE STATUS EXISTENTE
 if [ -f "$CONFIG_FILE" ]; then
-    # Extrai o valor do limite e o tipo de limitação do arquivo salvo
     VALOR_SALVO=$(grep -oP 'rate \K[^ ]+' "$CONFIG_FILE" | head -1)
-    
-    # Detecta o tipo baseado na estrutura do arquivo
     TEM_SAIDA=$(grep -c "root handle 1: htb" "$CONFIG_FILE")
     TEM_ENTRADA=$(grep -c "ifb0 root handle 1: htb" "$CONFIG_FILE")
 
@@ -66,27 +66,28 @@ if [ -f "$CONFIG_FILE" ]; then
         ip link delete ifb0 2>/dev/null
         crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" | crontab -
         rm -f "$CONFIG_FILE"
-        echo -e "${VERDE}Limites removidos! Velocidade total restaurada.${NC}"
+        echo -e "${VERDE}Limites removidos! Velocidade original restaurada.${NC}"
         exit 0
     elif [ "$OPT_EXISTENTE" == "3" ]; then
         exit 0
     fi
     clear
-    # Re-exibe o banner se for editar
+    # Re-exibe o cabeçalho simplificado para edição
     echo -e "${CIANO}###############################################################"
     echo -e "#                 ${VERDE}RECONFIGURAÇÃO GRAVONYX${CIANO}                    #"
     echo -e "###############################################################${NC}\n"
 else
     echo "-----------------------------------------------"
-    echo -e "${AMARELO}Nenhum limite detectado. VPS operando em velocidade total.${NC}"
+    echo -e "${AMARELO}Status: ${NC}Sem limites ativos (Velocidade Total)"
     echo "-----------------------------------------------"
 fi
 
-# 5. MENU DE CRIAÇÃO/EDIÇÃO
-echo -e "${CIANO}Selecione o novo tipo de limitação:${NC}"
+# 5. MENU DE CRIAÇÃO
+echo -e "${CIANO}Selecione o tipo de limitação:${NC}"
 echo -e "1) Saída (Upload)"
 echo -e "2) Entrada (Download)"
 echo -e "3) Ambos (Entrada e Saída)"
+echo "-----------------------------------------------"
 read -p "Opção: " TIPO_LIMITE
 
 read -p "Digite o valor numérico (ex: 450): " VALOR
@@ -101,7 +102,7 @@ case $UNIDADE_OPC in
 esac
 LIMITE="${VALOR}${SUFIXO}"
 
-# 6. GERAÇÃO DO SCRIPT DE PERSISTÊNCIA (REFINADO)
+# 6. GERAÇÃO DA PERSISTÊNCIA
 cat << SCHEDULER > "$CONFIG_FILE"
 #!/bin/bash
 # Creditos: Gravonyx.com
@@ -112,12 +113,10 @@ modprobe ifb 2>/dev/null
 ip link set dev ifb0 down 2>/dev/null
 ip link delete ifb0 2>/dev/null
 
-# SAIDA
 if [ "$TIPO_LIMITE" == "1" ] || [ "$TIPO_LIMITE" == "3" ]; then
     tc qdisc add dev \$IFACE root handle 1: htb default 10
     tc class add dev \$IFACE parent 1: classid 1:10 htb rate $LIMITE ceil $LIMITE
 fi
-# ENTRADA
 if [ "$TIPO_LIMITE" == "2" ] || [ "$TIPO_LIMITE" == "3" ]; then
     modprobe ifb && ip link add ifb0 type ifb && ip link set dev ifb0 up
     tc qdisc add dev \$IFACE handle ffff: ingress
@@ -131,8 +130,8 @@ chmod +x "$CONFIG_FILE"
 (crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" ; echo "@reboot $CONFIG_FILE") | crontab -
 bash "$CONFIG_FILE"
 
-echo -e "\n${VERDE}✅ Limite de $LIMITE configurado com sucesso!${NC}"
-echo -e "${CIANO}Gravonyx.com - O controle está em suas mãos.${NC}"
+echo -e "\n${VERDE}✅ Limite de $LIMITE aplicado com sucesso!${NC}"
+echo -e "${CIANO}Gravonyx.com - Inteligência em Redes.${NC}"
 EOF
 
 chmod +x limitar_banda.sh
