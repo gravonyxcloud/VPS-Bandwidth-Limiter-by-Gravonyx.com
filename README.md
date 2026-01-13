@@ -5,7 +5,7 @@ Gerencie facilmente o tráfego de entrada e saída da sua VPS Linux com interfac
 ## 🛠 Instalação Rápida
 Rode o comando abaixo como root:
 
-bash <(curl -sSL https://raw.githubusercontent.com/SEU_USUARIO/NOME_DO_REPO/main/limitar_banda.sh)
+bash <(curl -sSL https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh)
 
 ## ✨ Funcionalidades
 - 🟢 Menu interativo e colorido.
