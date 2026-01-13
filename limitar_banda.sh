@@ -8,10 +8,14 @@ AMARELO='\033[1;33m'
 VERMELHO='\033[0;31m'
 NC='\033[0m'
 
-# 1. LIMPA A TELA IMEDIATAMENTE
+# 1. TRABALHO SILENCIOSO (Verifica tudo antes de mostrar o menu)
+apt update &>/dev/null && apt install iproute2 -y &>/dev/null
+INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+
+# 2. LIMPA A TELA PARA O ESTADO FINAL
 clear
 
-# 2. MOSTRA O BANNER NO TOPO
+# 3. BANNER E MENU NO TOPO (A primeira coisa que o usuário vê)
 echo -e "${CIANO}###############################################################"
 echo -e "#                                                             #"
 echo -e "#    ____                                            .com     #"
@@ -23,16 +27,8 @@ echo -e "#                                    |___/                    #"
 echo -e "#                                                             #"
 echo -e "#                 ${VERDE}FEITO POR: GRAVONYX.COM${CIANO}                     #"
 echo -e "###############################################################${NC}"
-echo ""
-
-# 3. VERIFICAÇÕES SILENCIOSAS (Abaixo do banner)
-echo -ne "${AMARELO}[...] Verificando sistema, aguarde...${NC}\r"
-apt update &>/dev/null && apt install iproute2 -y &>/dev/null
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
-echo -e "${AMARELO}[OK] Interface detectada: ${VERDE}$INTERFACE${NC}               "
+echo -e "${AMARELO}Interface ativa: ${VERDE}$INTERFACE${NC}"
 echo "-----------------------------------------------"
-
-# 4. MENU DE OPÇÕES
 echo -e "${CIANO}O que você deseja limitar?${NC}"
 echo -e "1) ${AMARELO}Apenas Saída${NC} (Egress/Upload)"
 echo -e "2) ${AMARELO}Apenas Entrada${NC} (Ingress/Download)"
@@ -43,12 +39,11 @@ read -p "Opção: " TIPO_LIMITE
 
 # --- Lógica de Remoção ---
 if [ "$TIPO_LIMITE" == "0" ]; then
-    echo -e "${VERMELHO}Limpando tudo...${NC}"
     tc qdisc del dev $INTERFACE root 2>/dev/null
     tc qdisc del dev $INTERFACE ingress 2>/dev/null
     ip link delete ifb0 2>/dev/null
     crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" | crontab -
-    echo -e "${VERDE}Limites removidos!${NC}"
+    echo -e "${VERDE}Limites removidos com sucesso!${NC}"
     exit 0
 fi
 
@@ -61,13 +56,14 @@ case $UNIDADE_OPC in
     1) SUFIXO="mbit" ;;
     2) SUFIXO="kbit" ;;
     3) SUFIXO="gbit" ;;
-    *) echo -e "${VERMELHO}Erro.${NC}"; exit 1 ;;
+    *) echo -e "${VERMELHO}Opção inválida.${NC}"; exit 1 ;;
 esac
 LIMITE="${VALOR}${SUFIXO}"
 
-# --- Persistência e Aplicação ---
+# --- Persistência ---
 cat << SCHEDULER > /usr/local/bin/limit-bandwidth.sh
 #!/bin/bash
+# Creditos: Gravonyx.com
 IFACE=\$(ip route | grep default | awk '{print \$5}' | head -n1)
 tc qdisc del dev \$IFACE root 2>/dev/null
 tc qdisc del dev \$IFACE ingress 2>/dev/null
@@ -91,7 +87,7 @@ chmod +x /usr/local/bin/limit-bandwidth.sh
 (crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" ; echo "@reboot /usr/local/bin/limit-bandwidth.sh") | crontab -
 bash /usr/local/bin/limit-bandwidth.sh
 
-echo -e "\n${VERDE}Sucesso! Limite de $LIMITE configurado por Gravonyx.com${NC}"
+echo -e "\n${VERDE}Configuração de $LIMITE aplicada por Gravonyx.com!${NC}"
 EOF
 
 chmod +x limitar_banda.sh
