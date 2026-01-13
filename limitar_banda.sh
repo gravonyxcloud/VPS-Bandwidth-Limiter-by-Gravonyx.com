@@ -29,41 +29,64 @@ echo -e "#                                                             #"
 echo -e "#                 ${VERDE}FEITO POR: GRAVONYX.COM${CIANO}                     #"
 echo -e "###############################################################${NC}"
 echo -e "${AMARELO}Interface ativa: ${VERDE}$INTERFACE${NC}"
-echo "-----------------------------------------------"
 
-# 4. VERIFICAÇÃO DE REGRAS EXISTENTES
-REGRAS_ATIVAS=$(tc qdisc show dev $INTERFACE | grep "htb")
+# 4. VERIFICAÇÃO DETALHADA DE REGRAS EXISTENTES
+if [ -f "$CONFIG_FILE" ]; then
+    # Extrai o valor do limite e o tipo de limitação do arquivo salvo
+    VALOR_SALVO=$(grep -oP 'rate \K[^ ]+' "$CONFIG_FILE" | head -1)
+    
+    # Detecta o tipo baseado na estrutura do arquivo
+    TEM_SAIDA=$(grep -c "root handle 1: htb" "$CONFIG_FILE")
+    TEM_ENTRADA=$(grep -c "ifb0 root handle 1: htb" "$CONFIG_FILE")
 
-if [ -f "$CONFIG_FILE" ] || [ ! -z "$REGRAS_ATIVAS" ]; then
-    echo -e "${AMARELO}⚠️ ATENÇÃO: Já existe uma limitação ativa neste servidor!${NC}"
-    echo -e "O que deseja fazer?"
-    echo -e "1) ${CIANO}Editar / Criar nova regra${NC} (Sobrescreve a atual)"
-    echo -e "2) ${VERMELHO}Remover limitação completamente${NC}"
+    echo -e "-----------------------------------------------"
+    echo -e "${VERDE}📊 STATUS ATUAL DA VPS:${NC}"
+    
+    if [ "$TEM_SAIDA" -ge "1" ] && [ "$TEM_ENTRADA" -ge "1" ]; then
+        TIPO_STR="AMBOS (Download e Upload)"
+    elif [ "$TEM_SAIDA" -ge "1" ]; then
+        TIPO_STR="APENAS SAÍDA (Upload)"
+    else
+        TIPO_STR="APENAS ENTRADA (Download)"
+    fi
+
+    echo -e "Limite Configurado: ${AMARELO}$VALOR_SALVO${NC}"
+    echo -e "Tipo de Tráfego:    ${AMARELO}$TIPO_STR${NC}"
+    echo -e "Persistência:       ${VERDE}ATIVADA (@reboot)${NC}"
+    echo "-----------------------------------------------"
+    echo -e "${CIANO}O que deseja fazer?${NC}"
+    echo -e "1) ${CIANO}Editar / Alterar limite${NC}"
+    echo -e "2) ${VERMELHO}Remover e Voltar ao padrão (600Mb+)${NC}"
     echo -e "3) Sair"
     read -p "Opção: " OPT_EXISTENTE
-    
-    case $OPT_EXISTENTE in
-        2)
-            echo -e "${VERMELHO}Removendo todas as regras...${NC}"
-            tc qdisc del dev $INTERFACE root 2>/dev/null
-            tc qdisc del dev $INTERFACE ingress 2>/dev/null
-            ip link delete ifb0 2>/dev/null
-            crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" | crontab -
-            rm -f "$CONFIG_FILE"
-            echo -e "${VERDE}Limites removidos com sucesso!${NC}"
-            exit 0
-            ;;
-        3) exit 0 ;;
-        *) clear; echo -e "${AMARELO}Iniciando reconfiguração...${NC}";;
-    esac
+
+    if [ "$OPT_EXISTENTE" == "2" ]; then
+        tc qdisc del dev $INTERFACE root 2>/dev/null
+        tc qdisc del dev $INTERFACE ingress 2>/dev/null
+        ip link delete ifb0 2>/dev/null
+        crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" | crontab -
+        rm -f "$CONFIG_FILE"
+        echo -e "${VERDE}Limites removidos! Velocidade total restaurada.${NC}"
+        exit 0
+    elif [ "$OPT_EXISTENTE" == "3" ]; then
+        exit 0
+    fi
+    clear
+    # Re-exibe o banner se for editar
+    echo -e "${CIANO}###############################################################"
+    echo -e "#                 ${VERDE}RECONFIGURAÇÃO GRAVONYX${CIANO}                    #"
+    echo -e "###############################################################${NC}\n"
+else
+    echo "-----------------------------------------------"
+    echo -e "${AMARELO}Nenhum limite detectado. VPS operando em velocidade total.${NC}"
+    echo "-----------------------------------------------"
 fi
 
-# 5. MENU DE CRIAÇÃO (Apenas se o usuário escolher editar ou se não houver regra)
-echo -e "${CIANO}Selecione o tipo de limitação:${NC}"
+# 5. MENU DE CRIAÇÃO/EDIÇÃO
+echo -e "${CIANO}Selecione o novo tipo de limitação:${NC}"
 echo -e "1) Saída (Upload)"
 echo -e "2) Entrada (Download)"
 echo -e "3) Ambos (Entrada e Saída)"
-echo "-----------------------------------------------"
 read -p "Opção: " TIPO_LIMITE
 
 read -p "Digite o valor numérico (ex: 450): " VALOR
@@ -78,7 +101,7 @@ case $UNIDADE_OPC in
 esac
 LIMITE="${VALOR}${SUFIXO}"
 
-# 6. GERAÇÃO DO SCRIPT DE PERSISTÊNCIA
+# 6. GERAÇÃO DO SCRIPT DE PERSISTÊNCIA (REFINADO)
 cat << SCHEDULER > "$CONFIG_FILE"
 #!/bin/bash
 # Creditos: Gravonyx.com
@@ -88,10 +111,13 @@ tc qdisc del dev \$IFACE ingress 2>/dev/null
 modprobe ifb 2>/dev/null
 ip link set dev ifb0 down 2>/dev/null
 ip link delete ifb0 2>/dev/null
+
+# SAIDA
 if [ "$TIPO_LIMITE" == "1" ] || [ "$TIPO_LIMITE" == "3" ]; then
     tc qdisc add dev \$IFACE root handle 1: htb default 10
     tc class add dev \$IFACE parent 1: classid 1:10 htb rate $LIMITE ceil $LIMITE
 fi
+# ENTRADA
 if [ "$TIPO_LIMITE" == "2" ] || [ "$TIPO_LIMITE" == "3" ]; then
     modprobe ifb && ip link add ifb0 type ifb && ip link set dev ifb0 up
     tc qdisc add dev \$IFACE handle ffff: ingress
@@ -105,8 +131,8 @@ chmod +x "$CONFIG_FILE"
 (crontab -l 2>/dev/null | grep -v "limit-bandwidth.sh" ; echo "@reboot $CONFIG_FILE") | crontab -
 bash "$CONFIG_FILE"
 
-echo -e "\n${VERDE}✅ Configuração de $LIMITE aplicada com sucesso!${NC}"
-echo -e "${CIANO}Créditos: Gravonyx.com${NC}"
+echo -e "\n${VERDE}✅ Limite de $LIMITE configurado com sucesso!${NC}"
+echo -e "${CIANO}Gravonyx.com - O controle está em suas mãos.${NC}"
 EOF
 
 chmod +x limitar_banda.sh
