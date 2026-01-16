@@ -9,18 +9,33 @@ VERMELHO='\033[0;31m'
 NC='\033[0m'
 
 # Versão
-VERSAO="v4.1 Ultra Pro"
+VERSAO="v4.3 Ultra Pro"
 
-# 1. PREPARAÇÃO SILENCIOSA E DETECÇÃO REAL
-apt update &>/dev/null && apt install iproute2 ethtool -y &>/dev/null
+# 1. ATUALIZAÇÃO COM BARRA DE PROGRESSO
+clear
+echo -e "${CIANO}###############################################################"
+echo -e "#                                                             #"
+echo -e "#           PREPARANDO AMBIENTE GRAVONYX.COM                  #"
+echo -e "#                                                             #"
+echo -e "###############################################################${NC}"
+echo -e "${AMARELO}[1/3] Atualizando repositórios...${NC}"
+sudo apt update -y &>/dev/null
+
+echo -e "${AMARELO}[2/3] Instalando atualizações de segurança...${NC}"
+# Upgrade com barra de progresso simples
+sudo apt upgrade -y | grep -P -o "([0-9]+(?=%))" | xargs -I {} echo -ne "${VERDE}Progresso: [{}%]${NC}\r" 2>/dev/null
+echo -e "${VERDE}[OK] Sistema atualizado!${NC}"
+
+echo -e "${AMARELO}[3/3] Instalando ferramentas de rede...${NC}"
+sudo apt install iproute2 ethtool wget -y &>/dev/null
+
+# Detecta interface e velocidade real
 INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+SPEED_RAW=$(ethtool $INTERFACE 2>/dev/null | grep Speed | awk '{print $2}' | sed 's/Mb\/s//')
+SPEED_REAL=${SPEED_RAW:-"1000"} 
 CONFIG_FILE="/usr/local/bin/limit-bandwidth.sh"
 
-# Detecta a velocidade real da placa para evitar texto fixo
-SPEED_RAW=$(ethtool $INTERFACE 2>/dev/null | grep Speed | awk '{print $2}' | sed 's/Mb\/s//')
-SPEED_REAL=${SPEED_RAW:-"1000"} # Default 1000mb se falhar a detecção
-
-# 2. LIMPA TUDO E MOSTRA O BANNER
+# 2. LIMPA E MOSTRA O BANNER PRINCIPAL
 clear
 echo -e "${CIANO}###############################################################"
 echo -e "#                                                             #"
@@ -60,23 +75,19 @@ if [ -f "$CONFIG_FILE" ]; then
     clear
 fi
 
-# 4. OTIMIZAÇÃO DE REDE (BBR + DNS)
+# 4. OTIMIZAÇÃO DE REDE
 echo -e "\n${AMARELO}[+] OTIMIZAÇÃO PROFISSIONAL DE REDE${NC}"
 read -p "Deseja aplicar Otimização de Kernel (BBR) e DNS Pro? (s/n): " OP_OTIMIZAR
 
 if [[ "$OP_OTIMIZAR" =~ ^[S,s]$ ]]; then
-    echo -e "${VERDE}Aplicando TCP BBR e Buffers Avançados...${NC}"
-    cat << 'SYS' > /etc/sysctl.d/99-gravonyx.conf
-net.core.default_qdisc=fq
-net.ipv4.tcp_congestion_control=bbr
-net.core.rmem_max=16777216
-net.core.wmem_max=16777216
-net.ipv4.tcp_rmem=4096 87380 16777216
-net.ipv4.tcp_wmem=4096 65536 16777216
-SYS
-    sysctl -p /etc/sysctl.d/99-gravonyx.conf &>/dev/null
+    echo -e "${VERDE}Ativando TCP BBR e Otimizando Rotas...${NC}"
+    # Evita duplicatas no sysctl
+    sed -i '/net.core.default_qdisc/d' /etc/sysctl.conf
+    sed -i '/net.ipv4.tcp_congestion_control/d' /etc/sysctl.conf
+    echo "net.core.default_qdisc=fq" >> /etc/sysctl.conf
+    echo "net.ipv4.tcp_congestion_control=bbr" >> /etc/sysctl.conf
+    sysctl -p &>/dev/null
     echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf
-    echo -e "${VERDE}[OK] Rede Otimizada!${NC}"
 fi
 
 # 5. MENU DE LIMITAÇÃO
@@ -92,7 +103,6 @@ LIMITE="${VALOR}${SUFIXO}"
 # 6. PERSISTÊNCIA
 cat << SCHEDULER > "$CONFIG_FILE"
 #!/bin/bash
-# Gravonyx Pro
 IFACE=\$(ip route | grep default | awk '{print \$5}' | head -n1)
 tc qdisc del dev \$IFACE root 2>/dev/null
 tc qdisc del dev \$IFACE ingress 2>/dev/null
