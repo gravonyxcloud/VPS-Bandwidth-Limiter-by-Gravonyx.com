@@ -1,11 +1,12 @@
-# 🚀 VPS Bandwidth Limiter by Gravonyx.com
+# 🚀 VPS Bandwidth Limiter & Optimizer by Gravonyx.com
 
-Gerencie facilmente o tráfego de entrada e saída da sua VPS Linux com interface colorida e suporte a persistência após reboot.
+Gerencie o tráfego e otimize a performance da sua VPS Linux com uma interface profissional e persistência automática.
 
-## 🛠 Instalação Rápida
-Rode o comando abaixo como root:
+## 🛠 Instalação e Atualização Rápida
+Copie e cole o comando abaixo no seu terminal como root:
 
-bash <(curl -sSL https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh)
+```bash
+wget -qO limitar_banda.sh [https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh](https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh) && chmod +x limitar_banda.sh && ./limitar_banda.sh
 
 ## ✨ Funcionalidades
 - 🟢 Menu interativo e colorido.
