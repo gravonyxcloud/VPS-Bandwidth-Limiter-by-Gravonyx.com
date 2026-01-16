@@ -51,7 +51,7 @@ if [ -f "$CONFIG_FILE" ]; then
     echo "-----------------------------------------------"
     echo -e "${CIANO}O que deseja fazer?${NC}"
     echo -e "1) ${CIANO}Editar / Alterar limite${NC}"
-    echo -e "2) ${VERMELHO}Remover e Voltar ao padrão (600Mb+)${NC}"
+    echo -e "2) ${VERMELHO}Remover e Voltar ao padrão ${NC}"
     echo -e "3) Sair"
     read -p "Opção: " OPT_EXISTENTE
 
