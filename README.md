@@ -8,8 +8,10 @@ Gerencie o tráfego e turbine a performance da sua VPS Linux com uma interface p
 
 Copie e cole o comando abaixo no seu terminal como **root**:
 
-```bash
-wget -qO limitar_banda.sh [https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh](https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh) && chmod +x limitar_banda.sh && ./limitar_banda.sh
+``bash
+wget -qO limitar_banda.sh [https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh](https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh) && chmod +x limitar_banda.sh && ./limitar_banda.sh``
+
+---
 
 ✨ O que há de novo na Versão 4.3 Ultra Pro
 Diferente de scripts simples, esta ferramenta foca em estabilidade e velocidade real:
