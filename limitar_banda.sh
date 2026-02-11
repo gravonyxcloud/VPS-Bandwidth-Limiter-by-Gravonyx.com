@@ -8,19 +8,18 @@ NC='\033[0m'
 
 clear
 echo -e "${CIANO}###############################################################"
-echo -e "#                 GRAVONYX IA v9.1 COMPLETE                   #"
+echo -e "#                 GRAVONYX IA v9.2 FINAL                      #"
 echo -e "###############################################################${NC}"
 
 read -p "Qual o limite real da sua VPS em Mbps? (ex: 600): " LIMITE_BASE
 read -p "Deseja limitar Upload, Download ou Ambos? (1=Up, 2=Down, 3=Ambos): " TIPO_IA
 
-INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+INTERFACE=$(ip route | awk '/default/ {print $5; exit}')
 
 BOOST=$(( LIMITE_BASE + 10 ))
 MINIMO_CALC=$(( LIMITE_BASE / 2 ))
 MEDIO_CALC=$(( LIMITE_BASE * 3 / 4 ))
 
-# Piso absoluto 100mbit
 [ "$MINIMO_CALC" -lt 100 ] && MINIMO=100 || MINIMO=$MINIMO_CALC
 [ "$MEDIO_CALC" -lt 100 ] && MEDIO=100 || MEDIO=$MEDIO_CALC
 
@@ -127,9 +126,9 @@ clear
 while true; do
     tput cup 0 0
 
-    echo -e "\e[36m###############################################################"
-    echo -e "#            MONITOR DE TRÁFEGO GRAVONYX IA                   #"
-    echo -e "###############################################################\e[0m"
+    echo "###############################################################"
+    echo "#            MONITOR DE TRÁFEGO GRAVONYX IA                   #"
+    echo "###############################################################"
 
     R1=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
     T1=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
@@ -141,26 +140,24 @@ while true; do
     TX=$(( (T2-T1)*8/1048576 ))
 
     RATE_UPLOAD=$(tc class show dev $INTERFACE 2>/dev/null | \
-        grep "class htb 1:1" | grep -oP 'rate \K[0-9]+mbit')
+        awk '/class htb 1:1/ {for(i=1;i<=NF;i++) if($i=="rate") print $(i+1)}' | head -1)
 
     RATE_DOWNLOAD=$(tc filter show dev $INTERFACE parent ffff: 2>/dev/null | \
-        grep -oP 'rate \K[0-9]+mbit' | head -1)
+        awk '/police/ {for(i=1;i<=NF;i++) if($i=="rate") print $(i+1)}' | head -1)
 
     echo " Status: ● SERVIÇO ATIVO"
     echo "---------------------------------------------------------------"
-
     printf " DOWNLOAD ATUAL: %-10s Mbps\n" "$RX"
     printf " UPLOAD ATUAL:   %-10s Mbps\n" "$TX"
-
     echo "---------------------------------------------------------------"
 
     if [ "$TIPO_IA" == "1" ]; then
-        printf " LIMITADOR UPLOAD:   %-10s\n" "${RATE_UPLOAD:-Base}"
+        printf " LIMITADOR UPLOAD:   %-10s\n" "${RATE_UPLOAD:-${LIMITE_BASE}mbit}"
     elif [ "$TIPO_IA" == "2" ]; then
-        printf " LIMITADOR DOWNLOAD: %-10s\n" "${RATE_DOWNLOAD:-Base}"
+        printf " LIMITADOR DOWNLOAD: %-10s\n" "${RATE_DOWNLOAD:-${LIMITE_BASE}mbit}"
     else
-        printf " LIMITADOR UPLOAD:   %-10s\n" "${RATE_UPLOAD:-Base}"
-        printf " LIMITADOR DOWNLOAD: %-10s\n" "${RATE_DOWNLOAD:-Base}"
+        printf " LIMITADOR UPLOAD:   %-10s\n" "${RATE_UPLOAD:-${LIMITE_BASE}mbit}"
+        printf " LIMITADOR DOWNLOAD: %-10s\n" "${RATE_DOWNLOAD:-${LIMITE_BASE}mbit}"
     fi
 
     echo "---------------------------------------------------------------"
