@@ -1,32 +1,25 @@
-cat << 'EOF' > instalar_ia_v9.sh
+cat << 'EOF' > instalar_gravonyx_final.sh
 #!/bin/bash
 
-VERDE='\033[0;32m'
-NC='\033[0m'
+echo "=== INSTALADOR GRAVONYX IA FINAL ==="
 
-clear
-echo "INSTALADOR GRAVONYX IA v9.0"
-
-read -p "Limite real da VPS (Mbps): " LIMITE_BASE
-read -p "Interface (enter para auto): " INTERFACE
-
-[ -z "$INTERFACE" ] && INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
-
-# Nunca permitir menos que 100mbit
+read -p "Limite base real da VPS (ex 600): " LIMITE_BASE
 [ "$LIMITE_BASE" -lt 100 ] && LIMITE_BASE=100
+
+INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
 
 BOOST=$((LIMITE_BASE + 20))
 MEDIO=$((LIMITE_BASE * 75 / 100))
 MINIMO=100
 
-cat << CONFIG > /etc/gravonyx_ia.conf
+cat << CONF > /etc/gravonyx_ia.conf
 INTERFACE=$INTERFACE
 LIMITE_BASE=$LIMITE_BASE
 BOOST=$BOOST
 MEDIO=$MEDIO
 MINIMO=$MINIMO
 EMAIL_DESTINO=gabrielbomfimsilva4@gmail.com
-CONFIG
+CONF
 
 cat << 'WORKER' > /usr/local/bin/gravonyx_worker.sh
 #!/bin/bash
@@ -39,13 +32,24 @@ echo -e "Subject: $1\n\n$2" | msmtp $EMAIL_DESTINO
 }
 
 aplicar_regra() {
-tc qdisc del dev $INTERFACE root 2>/dev/null
-tc qdisc del dev $INTERFACE ingress 2>/dev/null
 
+TAXA=$1
+[ "$TAXA" -lt 100 ] && TAXA=100
+
+tc qdisc del dev $INTERFACE root 2>/dev/null
 tc qdisc add dev $INTERFACE root handle 1: htb default 20
-tc class add dev $INTERFACE parent 1: classid 1:1 htb rate ${1}mbit ceil ${1}mbit
-tc class add dev $INTERFACE parent 1:1 classid 1:10 htb rate 20mbit ceil ${1}mbit prio 1
-tc class add dev $INTERFACE parent 1:1 classid 1:20 htb rate $((1-20))mbit ceil $((1-20))mbit prio 2
+
+# Classe principal
+tc class add dev $INTERFACE parent 1: classid 1:1 htb rate ${TAXA}mbit ceil ${TAXA}mbit
+
+# SSH protegido
+tc class add dev $INTERFACE parent 1:1 classid 1:10 htb rate 20mbit ceil ${TAXA}mbit prio 1
+
+RESTO=$((TAXA-20))
+[ "$RESTO" -lt 80 ] && RESTO=80
+
+# Tráfego geral
+tc class add dev $INTERFACE parent 1:1 classid 1:20 htb rate ${RESTO}mbit ceil ${RESTO}mbit prio 2
 
 tc filter add dev $INTERFACE parent 1: protocol ip prio 1 u32 match ip dport 22 0xffff flowid 1:10
 tc filter add dev $INTERFACE parent 1: protocol ip prio 1 u32 match ip sport 22 0xffff flowid 1:10
@@ -102,7 +106,7 @@ chmod +x /usr/local/bin/gravonyx_worker.sh
 
 cat << SERVICE > /etc/systemd/system/gravonyx-ia.service
 [Unit]
-Description=Gravonyx IA
+Description=Gravonyx IA Bandwidth Manager
 After=network.target
 
 [Service]
@@ -118,8 +122,8 @@ systemctl daemon-reload
 systemctl enable gravonyx-ia
 systemctl restart gravonyx-ia
 
-echo -e "${VERDE}INSTALADO E ATIVO${NC}"
+echo "=== INSTALADO E RODANDO ==="
 EOF
 
-chmod +x instalar_ia_v9.sh
-./instalar_ia_v9.sh
+chmod +x instalar_gravonyx_final.sh
+./instalar_gravonyx_final.sh
