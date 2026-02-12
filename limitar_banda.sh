@@ -1,16 +1,17 @@
-cat << 'EOF' > instalar_gravonyx_pro.sh
 #!/bin/bash
 
-echo "=== GRAVONYX IA PRO MONITOR INTELIGENTE ==="
-
-apt update -y >/dev/null 2>&1
-apt install -y msmtp msmtp-mta mailutils >/dev/null 2>&1
+echo "=== GRAVONYX IA PRO MONITOR ESTÁVEL ==="
 
 read -p "Limite real da VPS em Mbps (ex: 450): " LIMITE_BASE
 [ -z "$LIMITE_BASE" ] && LIMITE_BASE=450
 [ "$LIMITE_BASE" -lt 100 ] && LIMITE_BASE=100
 
 INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
+
+if [ -z "$INTERFACE" ]; then
+echo "Erro: Interface de rede não detectada."
+exit 1
+fi
 
 THRESHOLD=$((LIMITE_BASE * 95 / 100))
 RESET=$((LIMITE_BASE * 70 / 100))
@@ -23,16 +24,18 @@ RESET=$RESET
 EMAIL_DESTINO=gabrielbomfimsilva4@gmail.com
 CONF
 
-echo "Configurando HTB..."
+echo "Aplicando HTB..."
 
 tc qdisc del dev $INTERFACE root 2>/dev/null
+
 tc qdisc add dev $INTERFACE root handle 1: htb default 20
 
 tc class add dev $INTERFACE parent 1: classid 1:1 htb rate ${LIMITE_BASE}mbit ceil ${LIMITE_BASE}mbit
+
 tc class add dev $INTERFACE parent 1:1 classid 1:10 htb rate 20mbit ceil ${LIMITE_BASE}mbit prio 1
 
 RESTO=$((LIMITE_BASE-20))
-[ "$RESTO" -lt 80 ] && RESTO=80
+[ "$RESTO" -lt 50 ] && RESTO=50
 
 tc class add dev $INTERFACE parent 1:1 classid 1:20 htb rate ${RESTO}mbit ceil ${RESTO}mbit prio 2
 
@@ -44,7 +47,6 @@ cat << 'WORKER' > /usr/local/bin/gravonyx_worker.sh
 source /etc/gravonyx_ia.conf
 
 STATE_FILE="/tmp/gravonyx_state"
-ALERT_FILE="/tmp/gravonyx_alert_lock"
 
 get_usage() {
 RX1=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
@@ -59,9 +61,7 @@ TX_RATE=$(( (TX2 - TX1) * 8 / 1024 / 1024 / 10 ))
 echo $((RX_RATE + TX_RATE))
 }
 
-if [ ! -f "$STATE_FILE" ]; then
-echo "normal" > $STATE_FILE
-fi
+[ ! -f "$STATE_FILE" ] && echo "normal" > $STATE_FILE
 
 while true; do
 
@@ -74,16 +74,23 @@ if [ "$USAGE" -ge "$THRESHOLD" ]; then
 
 START=$(date +%s)
 
-while [ "$USAGE" -ge "$THRESHOLD" ]; do
+while true; do
 sleep 10
 USAGE=$(get_usage)
 NOW=$(date +%s)
 ELAPSED=$((NOW - START))
 
+if [ "$USAGE" -lt "$THRESHOLD" ]; then
+break
+fi
+
 if [ "$ELAPSED" -ge 120 ]; then
 echo "alerted" > $STATE_FILE
 
-echo -e "Subject: ALERTA PICO DE BANDA\n\nServidor: $(hostname)\nUso: ${USAGE} Mbps\nLimite: ${LIMITE_BASE} Mbps\nHora: $(date)" | msmtp $EMAIL_DESTINO
+echo "Servidor: $(hostname)
+Uso detectado: ${USAGE} Mbps
+Limite: ${LIMITE_BASE} Mbps
+Horário: $(date)" | mail -s "ALERTA PICO DE BANDA" $EMAIL_DESTINO
 
 break
 fi
@@ -123,8 +130,4 @@ systemctl daemon-reload
 systemctl enable gravonyx-ia
 systemctl restart gravonyx-ia
 
-echo "=== GRAVONYX IA PRO ATIVO COM ALERTA INTELIGENTE ==="
-EOF
-
-chmod +x instalar_gravonyx_pro.sh
-./instalar_gravonyx_pro.sh
+echo "=== GRAVONYX IA PRO ATIVO E FUNCIONANDO ==="
