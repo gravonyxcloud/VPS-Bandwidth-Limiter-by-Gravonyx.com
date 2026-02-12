@@ -8,7 +8,7 @@ Gerencie o tráfego e turbine a performance da sua VPS Linux com uma interface p
 
 Copie e cole o comando abaixo no seu terminal como **root**:
 
-````bash <(curl -sSL https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh)````
+````sudoo apt update && wget https://raw.githubusercontent.com/gravonyxcloud/VPS-Bandwidth-Limiter-by-Gravonyx.com/main/limitar_banda.sh -O limitar_banda.sh && chmod +x limitar_banda.sh && ./limitar_banda.sh````
 
 ---
 
