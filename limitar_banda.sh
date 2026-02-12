@@ -1,27 +1,31 @@
 cat << 'EOF' > instalar_gravonyx_pro.sh
 #!/bin/bash
 
-echo "=== GRAVONYX IA PRO ==="
+echo "=== GRAVONYX IA PRO MONITOR INTELIGENTE ==="
 
-read -p "Limite base real da VPS (ex 600): " LIMITE_BASE
+apt update -y >/dev/null 2>&1
+apt install -y msmtp msmtp-mta mailutils >/dev/null 2>&1
+
+read -p "Limite real da VPS em Mbps (ex: 450): " LIMITE_BASE
+[ -z "$LIMITE_BASE" ] && LIMITE_BASE=450
 [ "$LIMITE_BASE" -lt 100 ] && LIMITE_BASE=100
 
 INTERFACE=$(ip route | grep default | awk '{print $5}' | head -n1)
 
-BOOST=$((LIMITE_BASE + 20))
-MEDIO=$((LIMITE_BASE * 75 / 100))
-MINIMO=100
+THRESHOLD=$((LIMITE_BASE * 95 / 100))
+RESET=$((LIMITE_BASE * 70 / 100))
 
 cat << CONF > /etc/gravonyx_ia.conf
 INTERFACE=$INTERFACE
 LIMITE_BASE=$LIMITE_BASE
-BOOST=$BOOST
-MEDIO=$MEDIO
-MINIMO=$MINIMO
+THRESHOLD=$THRESHOLD
+RESET=$RESET
 EMAIL_DESTINO=gabrielbomfimsilva4@gmail.com
 CONF
 
-# CRIA HTB UMA ÚNICA VEZ
+echo "Configurando HTB..."
+
+tc qdisc del dev $INTERFACE root 2>/dev/null
 tc qdisc add dev $INTERFACE root handle 1: htb default 20
 
 tc class add dev $INTERFACE parent 1: classid 1:1 htb rate ${LIMITE_BASE}mbit ceil ${LIMITE_BASE}mbit
@@ -39,69 +43,63 @@ cat << 'WORKER' > /usr/local/bin/gravonyx_worker.sh
 #!/bin/bash
 source /etc/gravonyx_ia.conf
 
-ESTADO_ARQUIVO="/tmp/gravonyx_estado"
+STATE_FILE="/tmp/gravonyx_state"
+ALERT_FILE="/tmp/gravonyx_alert_lock"
 
-enviar_email() {
-echo -e "Subject: $1\n\n$2" | msmtp $EMAIL_DESTINO
-}
-
-alterar_taxa() {
-
-TAXA=$1
-[ "$TAXA" -lt 100 ] && TAXA=100
-
-RESTO=$((TAXA-20))
-[ "$RESTO" -lt 80 ] && RESTO=80
-
-tc class change dev $INTERFACE parent 1: classid 1:1 htb rate ${TAXA}mbit ceil ${TAXA}mbit
-tc class change dev $INTERFACE parent 1:1 classid 1:10 htb rate 20mbit ceil ${TAXA}mbit
-tc class change dev $INTERFACE parent 1:1 classid 1:20 htb rate ${RESTO}mbit ceil ${RESTO}mbit
-}
-
-while true; do
-
+get_usage() {
 RX1=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
 TX1=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
-sleep 2
+sleep 10
 RX2=$(cat /sys/class/net/$INTERFACE/statistics/rx_bytes)
 TX2=$(cat /sys/class/net/$INTERFACE/statistics/tx_bytes)
 
-SPEED_RX=$(( (RX2 - RX1) * 8 / 2 / 1048576 ))
-SPEED_TX=$(( (TX2 - TX1) * 8 / 2 / 1048576 ))
-CURRENT=$(( SPEED_RX > SPEED_TX ? SPEED_RX : SPEED_TX ))
+RX_RATE=$(( (RX2 - RX1) * 8 / 1024 / 1024 / 10 ))
+TX_RATE=$(( (TX2 - TX1) * 8 / 1024 / 1024 / 10 ))
 
-if [ "$CURRENT" -ge "$(( LIMITE_BASE - 10 ))" ]; then
-    alterar_taxa $BOOST
-    ESTADO="BOOST"
-elif [ "$CURRENT" -ge "$MEDIO" ]; then
-    alterar_taxa $MEDIO
-    ESTADO="MEDIO"
-elif [ "$CURRENT" -ge "$MINIMO" ]; then
-    alterar_taxa $MINIMO
-    ESTADO="MINIMO"
-else
-    alterar_taxa $LIMITE_BASE
-    ESTADO="BASE"
+echo $((RX_RATE + TX_RATE))
+}
+
+if [ ! -f "$STATE_FILE" ]; then
+echo "normal" > $STATE_FILE
 fi
 
-if [ -f "$ESTADO_ARQUIVO" ]; then
-    read ESTADO_ANTERIOR < "$ESTADO_ARQUIVO"
-else
-    ESTADO_ANTERIOR="NENHUM"
+while true; do
+
+USAGE=$(get_usage)
+STATE=$(cat $STATE_FILE)
+
+if [ "$STATE" = "normal" ]; then
+
+if [ "$USAGE" -ge "$THRESHOLD" ]; then
+
+START=$(date +%s)
+
+while [ "$USAGE" -ge "$THRESHOLD" ]; do
+sleep 10
+USAGE=$(get_usage)
+NOW=$(date +%s)
+ELAPSED=$((NOW - START))
+
+if [ "$ELAPSED" -ge 120 ]; then
+echo "alerted" > $STATE_FILE
+
+echo -e "Subject: ALERTA PICO DE BANDA\n\nServidor: $(hostname)\nUso: ${USAGE} Mbps\nLimite: ${LIMITE_BASE} Mbps\nHora: $(date)" | msmtp $EMAIL_DESTINO
+
+break
+fi
+done
+
 fi
 
-if [ "$ESTADO" != "$ESTADO_ANTERIOR" ]; then
-    enviar_email "Mudança de Estado: $ESTADO" \
-"Servidor: $(hostname)
-Estado anterior: $ESTADO_ANTERIOR
-Novo estado: $ESTADO
-Upload: $SPEED_TX Mbps
-Download: $SPEED_RX Mbps
-Hora: $(date)"
-    echo "$ESTADO" > "$ESTADO_ARQUIVO"
+elif [ "$STATE" = "alerted" ]; then
+
+if [ "$USAGE" -le "$RESET" ]; then
+echo "normal" > $STATE_FILE
 fi
 
-sleep 3
+fi
+
+sleep 5
 done
 WORKER
 
@@ -109,7 +107,7 @@ chmod +x /usr/local/bin/gravonyx_worker.sh
 
 cat << SERVICE > /etc/systemd/system/gravonyx-ia.service
 [Unit]
-Description=Gravonyx IA PRO
+Description=Gravonyx IA Monitor Inteligente
 After=network.target
 
 [Service]
@@ -125,7 +123,7 @@ systemctl daemon-reload
 systemctl enable gravonyx-ia
 systemctl restart gravonyx-ia
 
-echo "=== GRAVONYX IA PRO ATIVO ==="
+echo "=== GRAVONYX IA PRO ATIVO COM ALERTA INTELIGENTE ==="
 EOF
 
 chmod +x instalar_gravonyx_pro.sh
